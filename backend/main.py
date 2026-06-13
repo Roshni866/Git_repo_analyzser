@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import httpx
 import asyncio
@@ -16,9 +17,28 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(rest_of_path: str):
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+@app.middleware("http")
+async def add_cors_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 @app.on_event("startup")
 async def startup():
@@ -29,7 +49,6 @@ class RepoRequest(BaseModel):
     github_token: str | None = None
 
 def parse_github_url(url: str) -> tuple[str, str]:
-    """Extract owner and repo from GitHub URL."""
     url = url.strip().rstrip("/")
     patterns = [
         r"github\.com/([^/]+)/([^/]+?)(?:\.git)?$",
@@ -41,9 +60,7 @@ def parse_github_url(url: str) -> tuple[str, str]:
             return match.group(1), match.group(2)
     raise ValueError(f"Invalid GitHub URL: {url}")
 
-
 async def fetch_github_data(owner: str, repo: str, token: str | None) -> dict:
-    """Fetch comprehensive repo data from GitHub API."""
     headers = {"Accept": "application/vnd.github.v3+json"}
     active_token = token or os.environ.get("GITHUB_TOKEN")
     if active_token:
