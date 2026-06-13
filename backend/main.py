@@ -8,7 +8,7 @@ import json
 import re
 from datetime import datetime
 from database import init_db, save_analysis, get_analysis, get_all_analyses
-#import anthropic_service
+import anthropic_service
 
 app = FastAPI(title="GitHub Repository Analyzer", version="1.0.0")
 
@@ -45,8 +45,8 @@ async def fetch_github_data(owner: str, repo: str, token: str | None) -> dict:
     headers = {"Accept": "application/vnd.github.v3+json"}
     if token:
         headers["Authorization"] = f"token {token}"
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+   
         async def get(path):
             r = await client.get(f"https://api.github.com{path}", headers=headers)
             if r.status_code == 404:
@@ -150,7 +150,7 @@ async def analyze_repo(request: RepoRequest):
     github_data = await fetch_github_data(owner, repo, request.github_token)
 
     # Run AI analysis
-   # analysis = await anthropic_service.analyze_repository(github_data)
+    analysis = await anthropic_service.analyze_repository(github_data)
 
     result = {
         "repo_key": repo_key,
