@@ -23,7 +23,7 @@ export default function Navbar() {
         <div style={{ display: 'flex', gap: 4 }}>
           {[
             { to: '/', icon: <BarChart2 size={15} />, label: 'Analyze' },
-            { to: '/history', icon: <Clock size={15} />, label: 'History' },
+            // #{ to: '/history', icon: <Clock size={15} />, label: 'History' },
           ].map(({ to, icon, label }) => (
             <Link key={to} to={to} style={{
               display: 'flex', alignItems: 'center', gap: 6,
