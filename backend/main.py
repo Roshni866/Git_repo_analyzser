@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from flask import app
 from pydantic import BaseModel
 import httpx
 import asyncio
@@ -10,13 +9,12 @@ import os
 from datetime import datetime
 from database import init_db, save_analysis, get_analysis, get_all_analyses
 import anthropic_service
-import os
 
-origins = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
+app = FastAPI(title="GitHub Repository Analyzer", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://git-repo-analyzser.vercel.app", "http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -47,8 +45,6 @@ def parse_github_url(url: str) -> tuple[str, str]:
 async def fetch_github_data(owner: str, repo: str, token: str | None) -> dict:
     """Fetch comprehensive repo data from GitHub API."""
     headers = {"Accept": "application/vnd.github.v3+json"}
-
-    # Use provided token or fall back to environment variable
     active_token = token or os.environ.get("GITHUB_TOKEN")
     if active_token:
         headers["Authorization"] = f"token {active_token}"
@@ -73,7 +69,6 @@ async def fetch_github_data(owner: str, repo: str, token: str | None) -> dict:
             get(f"/repos/{owner}/{repo}/contents"),
         )
 
-        # Try to fetch README
         readme_content = ""
         try:
             readme = await get(f"/repos/{owner}/{repo}/readme")
@@ -82,7 +77,6 @@ async def fetch_github_data(owner: str, repo: str, token: str | None) -> dict:
         except Exception:
             pass
 
-        # Try to fetch key files
         file_samples = {}
         important_files = ["requirements.txt", "package.json", "Dockerfile", ".github/workflows", "setup.py", "pyproject.toml"]
         root_files = [f["name"] for f in contents_raw if isinstance(contents_raw, list)]
@@ -148,17 +142,13 @@ async def analyze_repo(request: RepoRequest):
 
     repo_key = f"{owner}/{repo}"
 
-    # Check cache (5 min)
     cached = await get_analysis(repo_key)
     if cached:
         age = (datetime.utcnow() - datetime.fromisoformat(cached["analyzed_at"])).total_seconds()
         if age < 300:
             return {**cached, "cached": True}
 
-    # Fetch GitHub data
     github_data = await fetch_github_data(owner, repo, request.github_token)
-
-    # Run AI analysis
     analysis = await anthropic_service.analyze_repository(github_data)
 
     result = {
