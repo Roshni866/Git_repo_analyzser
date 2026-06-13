@@ -11,14 +11,14 @@ from database import init_db, save_analysis, get_analysis, get_all_analyses
 import anthropic_service
 
 app = FastAPI(title="GitHub Repository Analyzer", version="1.0.0")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
-
 @app.on_event("startup")
 async def startup():
     await init_db()
