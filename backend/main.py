@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from flask import app
 from pydantic import BaseModel
 import httpx
 import asyncio
@@ -9,16 +10,18 @@ import os
 from datetime import datetime
 from database import init_db, save_analysis, get_analysis, get_all_analyses
 import anthropic_service
+import os
 
-app = FastAPI(title="GitHub Repository Analyzer", version="1.0.0")
+origins = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://git-repo-analyzser.vercel.app", "http://localhost:3000"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
+
 @app.on_event("startup")
 async def startup():
     await init_db()
