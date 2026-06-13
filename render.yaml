@@ -10,3 +10,4 @@ services:
         sync: false
       - key: GITHUB_TOKEN
         sync: false
+    pythonVersion: "3.11.0"
