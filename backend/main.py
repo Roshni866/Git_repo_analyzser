@@ -1,11 +1,11 @@
-
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
 import asyncio
 import json
 import re
+import os
 from datetime import datetime
 from database import init_db, save_analysis, get_analysis, get_all_analyses
 import anthropic_service
@@ -40,13 +40,18 @@ def parse_github_url(url: str) -> tuple[str, str]:
             return match.group(1), match.group(2)
     raise ValueError(f"Invalid GitHub URL: {url}")
 
+
 async def fetch_github_data(owner: str, repo: str, token: str | None) -> dict:
     """Fetch comprehensive repo data from GitHub API."""
     headers = {"Accept": "application/vnd.github.v3+json"}
-    if token:
-        headers["Authorization"] = f"token {token}"
+
+    # Use provided token or fall back to environment variable
+    active_token = token or os.environ.get("GITHUB_TOKEN")
+    if active_token:
+        headers["Authorization"] = f"token {active_token}"
+
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-   
+
         async def get(path):
             r = await client.get(f"https://api.github.com{path}", headers=headers)
             if r.status_code == 404:
@@ -130,6 +135,7 @@ async def fetch_github_data(owner: str, repo: str, token: str | None) -> dict:
             "homepage": repo_data.get("homepage"),
         }
 
+
 @app.post("/api/analyze")
 async def analyze_repo(request: RepoRequest):
     try:
@@ -163,9 +169,11 @@ async def analyze_repo(request: RepoRequest):
     await save_analysis(repo_key, result)
     return result
 
+
 @app.get("/api/history")
 async def get_history():
     return await get_all_analyses()
+
 
 @app.get("/api/health")
 async def health():

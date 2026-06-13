@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Github, Clock, ChevronRight, Search } from 'lucide-react';
+const API_BASE = process.env.REACT_APP_API_URL || '';
 
 export default function History() {
   const [items, setItems] = useState([]);
@@ -10,7 +11,7 @@ export default function History() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    axios.get('/api/history')
+    axios.get(`${API_BASE}/api/history`)
       .then(r => { setItems(r.data); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
@@ -18,7 +19,7 @@ export default function History() {
   async function loadAnalysis(repoKey) {
     setAnalyzing(repoKey);
     try {
-      const res = await axios.post('/api/analyze', {
+      const res = await axios.post(`${API_BASE}/api/analyze`, {
         url: `https://github.com/${repoKey}`,
       });
       sessionStorage.setItem('analysis_result', JSON.stringify(res.data));
