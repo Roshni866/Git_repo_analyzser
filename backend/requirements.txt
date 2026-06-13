@@ -5,3 +5,5 @@ aiosqlite
 python-multipart
 pydantic
 groq
+python-jose[cryptography]
+bcrypt==4.1.3

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Github, Zap, Shield, Code2, ChevronRight } from 'lucide-react';
 import axios from 'axios';
+import { useAuth } from '../hooks/useAuth';
 const API_BASE = process.env.REACT_APP_API_URL || '';
 
 const EXAMPLES = [
@@ -12,12 +13,13 @@ const EXAMPLES = [
 
 export default function Home() {
   const [url, setUrl] = useState('');
-  const [token, setToken] = useState('');
+  const [githubToken, setGithubToken] = useState('');   // GitHub token input
   const [showToken, setShowToken] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [loadingMsg, setLoadingMsg] = useState('');
   const navigate = useNavigate();
+  const { token: authToken } = useAuth();       // JWT auth token
 
   const messages = [
     'Fetching repository data…',
@@ -37,12 +39,13 @@ export default function Home() {
       i = (i + 1) % messages.length;
       setLoadingMsg(messages[i]);
     }, 1800);
-
-    try {
-      const res = await axios.post(`${API_BASE}/api/analyze`, {
-        url: repoUrl,
-        github_token: token || null,
-      });
+     try {
+      const res = await axios.post(
+  `${API_BASE}/api/analyze`,
+  { url: repoUrl, github_token: null },
+  authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : {}
+);
+   
       sessionStorage.setItem('analysis_result', JSON.stringify(res.data));
       navigate('/analysis');
     } catch (err) {
