@@ -1,17 +1,26 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
+from typing import Optional
 import httpx
 import asyncio
 import json
+import aiosqlite
 import re
 import os
 from datetime import datetime
-from database import init_db, save_analysis, get_analysis, get_all_analyses
+from database import (
+    init_db, save_analysis, get_analysis, get_all_analyses,
+    create_user, get_user_by_email, get_user_by_id, get_user_by_google_id
+)
+from auth import (
+    hash_password, verify_password, create_access_token,
+    get_current_user, get_optional_user
+)
 import anthropic_service
 
-app = FastAPI(title="GitHub Repository Analyzer", version="1.0.0")
+app = FastAPI(title="GitHub Repository Analyzer", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +53,160 @@ async def add_cors_headers(request: Request, call_next):
 async def startup():
     await init_db()
 
+
+# ── Auth Models ───────────────────────────────────────────────────
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+# ── Auth Endpoints ────────────────────────────────────────────────
+
+@app.post("/auth/register")
+async def register(request: RegisterRequest):
+    # Check if email already exists
+    existing = await get_user_by_email(request.email)
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    # Validate password length
+    if len(request.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    # Hash password and create user
+    hashed = hash_password(request.password)
+    user = await create_user(
+        email=request.email,
+        hashed_password=hashed,
+        name=request.name,
+    )
+
+    # Create token
+    token = create_access_token(user["id"], user["email"])
+
+    return {
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user["name"],
+            "avatar_url": user.get("avatar_url"),
+        }
+    }
+
+
+@app.post("/auth/login")
+async def login(request: LoginRequest):
+    # Find user by email
+    user = await get_user_by_email(request.email)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # Check if user signed up with Google (no password)
+    if not user.get("hashed_password"):
+        raise HTTPException(status_code=400, detail="This account uses Google login")
+
+    # Verify password
+    if not verify_password(request.password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # Create token
+    token = create_access_token(user["id"], user["email"])
+
+    return {
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user["name"],
+            "avatar_url": user.get("avatar_url"),
+        }
+    }
+
+
+@app.get("/auth/me")
+async def get_me(current_user: dict = Depends(get_current_user)):
+    user = await get_user_by_id(int(current_user["sub"]))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+class GoogleAuthRequest(BaseModel):
+    token: str  # Google ID token from frontend
+
+
+@app.post("/auth/google")
+async def google_auth(request: GoogleAuthRequest):
+    """Verify Google token and login/register user."""
+    
+    # Verify token with Google
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"https://oauth2.googleapis.com/tokeninfo?id_token={request.token}"
+        )
+    
+    if response.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+    
+    google_data = response.json()
+    
+    # Verify the token was meant for our app
+    if google_data.get("aud") != os.environ.get("GOOGLE_CLIENT_ID"):
+        raise HTTPException(status_code=401, detail="Token not intended for this app")
+    
+    email = google_data.get("email")
+    name = google_data.get("name", "")
+    google_id = google_data.get("sub")
+    avatar_url = google_data.get("picture", "")
+    
+    if not email:
+        raise HTTPException(status_code=400, detail="Could not get email from Google")
+    
+    # Check if user exists by Google ID
+    user = await get_user_by_google_id(google_id)
+    
+    if not user:
+        # Check if email already registered with password
+        user = await get_user_by_email(email)
+        
+        if user:
+            # User exists with email — link Google ID to their account
+            async with aiosqlite.connect("analyzer.db") as db:
+                await db.execute(
+                    "UPDATE users SET google_id = ?, avatar_url = ? WHERE email = ?",
+                    (google_id, avatar_url, email)
+                )
+                await db.commit()
+        else:
+            # New user — create account
+            user = await create_user(
+                email=email,
+                name=name,
+                google_id=google_id,
+                avatar_url=avatar_url,
+            )
+    
+    # Create our JWT token
+    token = create_access_token(user["id"], user["email"])
+    
+    return {
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user.get("name", name),
+            "avatar_url": user.get("avatar_url", avatar_url),
+        }
+    }
+
+# ── Repo Analysis ─────────────────────────────────────────────────
+
 class RepoRequest(BaseModel):
     url: str
     github_token: str | None = None
@@ -59,6 +222,7 @@ def parse_github_url(url: str) -> tuple[str, str]:
         if match:
             return match.group(1), match.group(2)
     raise ValueError(f"Invalid GitHub URL: {url}")
+
 
 async def fetch_github_data(owner: str, repo: str, token: str | None) -> dict:
     headers = {"Accept": "application/vnd.github.v3+json"}
@@ -151,20 +315,26 @@ async def fetch_github_data(owner: str, repo: str, token: str | None) -> dict:
 
 
 @app.post("/api/analyze")
-async def analyze_repo(request: RepoRequest):
+async def analyze_repo(
+    request: RepoRequest,
+    current_user: Optional[dict] = Depends(get_optional_user)
+):
     try:
         owner, repo = parse_github_url(request.url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     repo_key = f"{owner}/{repo}"
+    user_id = int(current_user["sub"]) if current_user else None
 
-    cached = await get_analysis(repo_key)
+    # Check cache
+    cached = await get_analysis(repo_key, user_id)
     if cached:
         age = (datetime.utcnow() - datetime.fromisoformat(cached["analyzed_at"])).total_seconds()
         if age < 300:
             return {**cached, "cached": True}
 
+    # Fetch and analyze
     github_data = await fetch_github_data(owner, repo, request.github_token)
     analysis = await anthropic_service.analyze_repository(github_data)
 
@@ -176,15 +346,16 @@ async def analyze_repo(request: RepoRequest):
         "cached": False,
     }
 
-    await save_analysis(repo_key, result)
+    await save_analysis(repo_key, result, user_id)
     return result
 
 
 @app.get("/api/history")
-async def get_history():
-    return await get_all_analyses()
+async def get_history(current_user: dict = Depends(get_current_user)):
+    user_id = int(current_user["sub"])
+    return await get_all_analyses(user_id)
 
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": "2.0.0"}
