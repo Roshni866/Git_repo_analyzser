@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './hooks/useAuth';
 import Home from './pages/Home';
 import Analysis from './pages/Analysis';
@@ -34,6 +35,7 @@ export default function App() {
               </Routes>
             </main>
           </div>
+          <Analytics />
         </BrowserRouter>
       </AuthProvider>
     </GoogleOAuthProvider>
