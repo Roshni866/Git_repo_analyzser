@@ -3,6 +3,7 @@ import json
 import os
 
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
+MODEL = os.environ.get("LLM_MODEL", "openai/gpt-oss-120b")
 
 ANALYSIS_PROMPT = """You are an expert software engineer and code reviewer. Analyze this GitHub repository and provide a comprehensive evaluation.
 
@@ -82,9 +83,9 @@ async def analyze_repository(github_data: dict) -> dict:
     prompt = ANALYSIS_PROMPT.format(repo_data=json.dumps(repo_summary, indent=2))
 
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=4096,
+        max_completion_tokens=4096,
         temperature=0.3,
     )
 
