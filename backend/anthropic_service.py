@@ -1,24 +1,8 @@
-"""LLM service for RepoLens.
-
-Production uses Groq (Llama 3.3 70B). The Anthropic (Claude) branch is wired in behind
-LLM_PROVIDER=anthropic but is NOT enabled in production: the Claude API needs paid API credits,
-so it is planned for when the app has subscription revenue.
-"""
-import asyncio
+from groq import Groq
 import json
 import os
 
-PROVIDER = os.environ.get("LLM_PROVIDER", "groq").lower()
-
-if PROVIDER == "anthropic":
-    import anthropic                                   # pip install anthropic (only needed for this provider)
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    MODEL = os.environ.get("LLM_MODEL", "claude-sonnet-4-5")
-else:
-    from groq import Groq
-    client = Groq(api_key=os.environ["GROQ_API_KEY"])
-    MODEL = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
-
+client = Groq(api_key=os.environ["GROQ_API_KEY"])
 
 ANALYSIS_PROMPT = """You are an expert software engineer and code reviewer. Analyze this GitHub repository and provide a comprehensive evaluation.
 
@@ -72,32 +56,6 @@ Respond with ONLY valid JSON, no markdown, no explanation, just the raw JSON obj
 }}"""
 
 
-def _call_llm(prompt: str) -> str:
-    """Blocking call to the configured provider. Returns the raw text of the reply."""
-    if PROVIDER == "anthropic":
-        resp = client.messages.create(
-            model=MODEL,
-            max_tokens=4096,
-            temperature=0.3,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return resp.content[0].text.strip()
-    resp = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=4096,
-        temperature=0.3,
-    )
-    return resp.choices[0].message.content.strip()
-
-
-def _parse_json(raw: str) -> dict:
-    # Strip markdown fences if the model adds them
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
-    return json.loads(raw)
-
-
 async def analyze_repository(github_data: dict) -> dict:
     repo_summary = {
         "name": github_data["name"],
@@ -123,6 +81,17 @@ async def analyze_repository(github_data: dict) -> dict:
 
     prompt = ANALYSIS_PROMPT.format(repo_data=json.dumps(repo_summary, indent=2))
 
-    # The SDK call is blocking; run it in a worker thread so the event loop stays free for other requests.
-    raw = await asyncio.to_thread(_call_llm, prompt)
-    return _parse_json(raw)
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=4096,
+        temperature=0.3,
+    )
+
+    raw = response.choices[0].message.content.strip()
+
+    # Strip markdown fences if model adds them
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+
+    return json.loads(raw)

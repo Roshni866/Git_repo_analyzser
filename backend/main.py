@@ -18,7 +18,7 @@ from auth import (
     hash_password, verify_password, create_access_token,
     get_current_user, get_optional_user
 )
-import llm_service
+import anthropic_service
 
 app = FastAPI(title="GitHub Repository Analyzer", version="2.0.0")
 
@@ -336,7 +336,7 @@ async def analyze_repo(
 
     # Fetch and analyze
     github_data = await fetch_github_data(owner, repo, request.github_token)
-    analysis = await llm_service.analyze_repository(github_data)
+    analysis = await anthropic_service.analyze_repository(github_data)
 
     result = {
         "repo_key": repo_key,
