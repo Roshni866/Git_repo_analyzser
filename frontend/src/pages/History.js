@@ -13,10 +13,12 @@ export default function History() {
   const { token } = useAuth();
 
   useEffect(() => {
-    axios.get(`${API_BASE}/api/history`)
+    axios.get(`${API_BASE}/api/history`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
       .then(r => { setItems(r.data); setLoading(false); })
       .catch(() => setLoading(false));
-  }, []);
+  }, [token]);
 
   async function loadAnalysis(repoKey) {
     setAnalyzing(repoKey);
