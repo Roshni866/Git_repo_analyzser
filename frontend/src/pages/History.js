@@ -72,7 +72,7 @@ export default function History() {
         <>
           {/* Info text */}
           <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-            Click any repo to reload its analysis instantly from cache.
+            Results under five minutes old load from cache; older entries are analyzed again.
           </p>
 
           {/* History list */}

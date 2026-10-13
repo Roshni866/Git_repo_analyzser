@@ -42,7 +42,7 @@ export default function Home() {
      try {
       const res = await axios.post(
   `${API_BASE}/api/analyze`,
-  { url: repoUrl, github_token: null },
+  { url: repoUrl, github_token: githubToken.trim() || null },
   authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : {}
 );
    
@@ -167,8 +167,8 @@ export default function Home() {
             <input
               type="password"
               placeholder="ghp_xxxxxxxxxxxx"
-              value={token}
-              onChange={e => setToken(e.target.value)}
+              value={githubToken}
+              onChange={e => setGithubToken(e.target.value)}
               style={{ marginTop: 8 }}
             />
           )}
