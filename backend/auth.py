@@ -6,7 +6,11 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
 
-SECRET_KEY = os.environ.get("JWT_SECRET", "repolens-super-secret-key-change-in-production")
+_DEFAULT_SECRET = "repolens-super-secret-key-change-in-production"
+SECRET_KEY = os.environ.get("JWT_SECRET", _DEFAULT_SECRET)
+if SECRET_KEY == _DEFAULT_SECRET:
+    # Set JWT_SECRET in your host's environment variables. With the default, anyone can forge tokens.
+    print("WARNING: JWT_SECRET is not set; using an insecure default secret.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 30
 
